@@ -30,7 +30,7 @@ resize(); window.addEventListener('resize',resize);
 function updateClock(){ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' AKDT'; }
 setInterval(updateClock,1000); updateClock();
 
-// ── REAL STAR POSITIONS for Juneau ──
+// ── ASTRONOMY ──
 const LAT_R=58.3005*Math.PI/180, LON=-134.4197;
 function jd(d){ return d.getTime()/86400000+2440587.5; }
 function lst(date){ const j=jd(date),T=(j-2451545)/36525; return((280.46061837+360.98564736629*(j-2451545)+T*T*.000387933+LON)%360+360)%360; }
@@ -46,18 +46,15 @@ function toAltAz(ra,dec,date){
 function project(alt,az){
   if(alt<-2) return null;
   const hy=H*0.88;
-  const y=hy-(Math.max(0,alt)/90)*hy*0.94;
-  const x=W/2+((((az-180+180)%360)-180)/95)*(W/2);
-  return{x,y};
+  return{x:W/2+((((az-180+180)%360)-180)/95)*(W/2), y:hy-(Math.max(0,alt)/90)*hy*0.94};
 }
 const STARS=[
-  {n:'Dubhe',  ra:11.0621,dec:61.751,mag:1.8},{n:'Merak', ra:11.0307,dec:56.383,mag:2.4},
-  {n:'Phecda', ra:11.8976,dec:53.695,mag:2.4},{n:'Megrez',ra:12.2574,dec:57.033,mag:3.3},
-  {n:'Alioth', ra:12.9004,dec:55.960,mag:1.8},{n:'Mizar', ra:13.3988,dec:54.926,mag:2.1},
-  {n:'Alkaid', ra:13.7923,dec:49.314,mag:1.9},{n:'Polaris',ra:2.5302,dec:89.264,mag:2.0},
-  {n:'Vega',   ra:18.6157,dec:38.783,mag:0.0},{n:'Deneb', ra:20.6905,dec:45.280,mag:1.3},
-  {n:'Altair', ra:19.8463,dec:8.868, mag:0.8},{n:'Capella',ra:5.2778,dec:45.998,mag:0.1},
-  {n:'Arcturus',ra:14.2612,dec:19.182,mag:-0.1},{n:'Schedar',ra:0.6751,dec:56.537,mag:2.2},
+  {n:'Dubhe',ra:11.0621,dec:61.751,mag:1.8},{n:'Merak',ra:11.0307,dec:56.383,mag:2.4},
+  {n:'Phecda',ra:11.8976,dec:53.695,mag:2.4},{n:'Megrez',ra:12.2574,dec:57.033,mag:3.3},
+  {n:'Alioth',ra:12.9004,dec:55.960,mag:1.8},{n:'Mizar',ra:13.3988,dec:54.926,mag:2.1},
+  {n:'Alkaid',ra:13.7923,dec:49.314,mag:1.9},{n:'Polaris',ra:2.5302,dec:89.264,mag:2.0},
+  {n:'Vega',ra:18.6157,dec:38.783,mag:0.0},{n:'Deneb',ra:20.6905,dec:45.280,mag:1.3},
+  {n:'Capella',ra:5.2778,dec:45.998,mag:0.1},{n:'Arcturus',ra:14.2612,dec:19.182,mag:-0.1},
 ];
 let spos={};
 function updatePos(){ const now=new Date(); STARS.forEach(s=>{spos[s.n]={...toAltAz(s.ra,s.dec,now),mag:s.mag};}); }
@@ -88,20 +85,61 @@ const comets=[];
 function spawnComet(){ comets.push({x:Math.random()*W,y:Math.random()*H*.5,vx:(Math.random()*3+2)*(Math.random()<.5?1:-1),vy:Math.random()*1.2+.3,len:Math.random()*150+70,alpha:1,r:Math.random()*.7+.25}); }
 spawnComet(); setInterval(()=>Math.random()<.4&&spawnComet(),7000);
 
+const HY=()=>H*.88;
+
+// ── BILLBOARD — centered on horizon ──
+const BW=180, BH=52, BPOST=38;
+function bbX(){ return W*.5; }
+function bbY(){ return HY()-BPOST; }
+
+function drawBillboard(lit){
+  const x=bbX(), y=bbY();
+  // post
+  ctx.strokeStyle='rgba(80,80,80,0.7)'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+BPOST); ctx.stroke();
+  // board
+  ctx.fillStyle='#050505';
+  ctx.strokeStyle=lit>0?`rgba(0,255,175,${0.4+lit*.3})`:'rgba(30,30,30,0.8)';
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.rect(x-BW/2,y-BH,BW,BH); ctx.fill(); ctx.stroke();
+  // text lights up with beam
+  if(lit>0){
+    ctx.save(); ctx.globalAlpha=lit;
+    const sg=ctx.createRadialGradient(x,y-BH/2,0,x,y-BH/2,BW*.8);
+    sg.addColorStop(0,'rgba(0,255,200,0.15)'); sg.addColorStop(1,'rgba(0,255,200,0)');
+    ctx.fillStyle=sg; ctx.fillRect(x-BW,y-BH*3,BW*2,BH*3.5);
+    ctx.fillStyle=`rgba(0,255,185,${lit})`;
+    ctx.font='bold 15px "Courier New",monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('COMING SOON', x, y-BH*.6);
+    ctx.font='8px "Courier New",monospace';
+    ctx.fillStyle=`rgba(0,200,150,${lit*.7})`;
+    ctx.fillText('CHEZPREFECT.COM', x, y-BH*.2);
+    ctx.restore();
+  }
+}
+
 // ── UFO ──
-const ufo={x:0,y:0,size:16,speed:0,phase:'init',wps:[],wpIdx:0,stopX:0,stopY:0,beamLen:0,beamMax:0,signAlpha:0,signTimer:0,waitTimer:0};
+const ufo={x:0,y:0,size:16,speed:0,phase:'init',
+  wps:[],wpIdx:0,stopX:0,stopY:0,
+  beamLen:0,beamMax:0,beamAlpha:0,
+  litAlpha:0,holdTimer:0,waitTimer:0};
 
 function initUFO(){
+  // zigzag waypoints, then stop directly above billboard
   const pts=[];
-  for(let i=0;i<=5;i++) pts.push({x:-80+(i/5)*(W+160), y:H*(.08+(i%2===0?.0:.09)+Math.random()*.05)});
-  pts.push({x:W*(.3+Math.random()*.4), y:H*.65});
+  for(let i=0;i<=5;i++) pts.push({
+    x:-80+(i/5)*(W+160),
+    y:H*(.08+(i%2===0?.02:.11)+Math.random()*.04)
+  });
+  const sx=bbX(), sy=H*.38;
+  pts.push({x:sx, y:sy});
   ufo.wps=pts; ufo.wpIdx=0;
   ufo.x=pts[0].x; ufo.y=pts[0].y;
   ufo.speed=1.8; ufo.phase='flying';
-  ufo.beamLen=0; ufo.signAlpha=0; ufo.signTimer=0; ufo.waitTimer=0;
-  const last=pts[pts.length-1];
-  ufo.stopX=last.x; ufo.stopY=last.y;
-  ufo.beamMax=H*.88-last.y-4;
+  ufo.beamLen=0; ufo.beamAlpha=0; ufo.litAlpha=0; ufo.holdTimer=0; ufo.waitTimer=0;
+  ufo.stopX=sx; ufo.stopY=sy;
+  ufo.beamMax=HY()-sy;
 }
 initUFO();
 
@@ -110,27 +148,32 @@ function updateUFO(){
   if(u.phase==='flying'){
     const wp=u.wps[Math.min(u.wpIdx+1,u.wps.length-1)];
     const dx=wp.x-u.x,dy=wp.y-u.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-    if(d<6){u.wpIdx++; if(u.wpIdx>=u.wps.length-1)u.phase='stopping';}
+    if(d<6){u.wpIdx++; if(u.wpIdx>=u.wps.length-1) u.phase='stopping';}
     else{u.x+=dx/d*u.speed; u.y+=dy/d*u.speed;}
   } else if(u.phase==='stopping'){
-    u.speed*=0.91;
+    u.speed*=0.9;
     const dx=u.stopX-u.x,dy=u.stopY-u.y,d=Math.sqrt(dx*dx+dy*dy)||1;
     u.x+=dx/d*Math.max(u.speed,.05); u.y+=dy/d*Math.max(u.speed,.05);
-    if(u.speed<0.08) u.phase='beaming';
+    if(u.speed<0.06) u.phase='beaming';
   } else if(u.phase==='beaming'){
-    u.beamLen=Math.min(u.beamLen+3,u.beamMax);
-    if(u.beamLen>=u.beamMax){u.signAlpha=Math.min(u.signAlpha+0.016,1); if(u.signAlpha>=1){u.phase='sign';u.signTimer=0;}}
-  } else if(u.phase==='sign'){
-    u.signTimer++; if(u.signTimer>240) u.phase='retracting';
+    u.beamAlpha=Math.min(u.beamAlpha+0.04,1);
+    u.beamLen=Math.min(u.beamLen+4,u.beamMax);
+    u.litAlpha=Math.min(u.litAlpha+0.015, u.beamLen/u.beamMax);
+    if(u.beamLen>=u.beamMax){ u.phase='holding'; u.holdTimer=0; }
+  } else if(u.phase==='holding'){
+    u.holdTimer++;
+    if(u.holdTimer>220) u.phase='retracting';
   } else if(u.phase==='retracting'){
-    u.signAlpha=Math.max(u.signAlpha-0.018,0);
-    u.beamLen=Math.max(u.beamLen-4,0);
-    if(u.beamLen<=0){u.phase='departing'; u.speed=0.8;}
+    u.beamLen=Math.max(u.beamLen-5,0);
+    u.beamAlpha=Math.max(u.beamAlpha-0.02,0);
+    u.litAlpha=Math.max(u.litAlpha-0.02,0);
+    if(u.beamLen<=0){ u.phase='departing'; u.speed=0.8; }
   } else if(u.phase==='departing'){
-    u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed; u.y-=u.speed*.15;
-    if(u.x>W+160){u.phase='waiting';}
+    u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed; u.y-=u.speed*.1;
+    if(u.x>W+160) u.phase='waiting';
   } else if(u.phase==='waiting'){
-    u.waitTimer++; if(u.waitTimer>180) initUFO();
+    u.waitTimer++;
+    if(u.waitTimer>200) initUFO();
   }
 }
 
@@ -138,37 +181,34 @@ function drawUFO(){
   const u=ufo,x=u.x,y=u.y,s=u.size;
   if(u.phase==='waiting'||u.phase==='init') return;
 
-  if(u.beamLen>0){
+  // beam — drawn so it lands exactly on the billboard
+  if(u.beamLen>0 && u.beamAlpha>0){
     const bw=s*2;
-    const beam=ctx.createLinearGradient(x,y+s*.3,x,y+u.beamLen);
-    beam.addColorStop(0,'rgba(0,255,200,0.30)'); beam.addColorStop(.65,'rgba(0,255,200,0.08)'); beam.addColorStop(1,'rgba(0,255,200,0)');
-    ctx.beginPath(); ctx.moveTo(x-bw*.35,y+s*.3); ctx.lineTo(x+bw*.35,y+s*.3); ctx.lineTo(x+bw,y+u.beamLen); ctx.lineTo(x-bw,y+u.beamLen); ctx.closePath();
-    ctx.fillStyle=beam; ctx.fill();
+    const beam=ctx.createLinearGradient(x,y+s*.35,x,y+u.beamLen);
+    beam.addColorStop(0,`rgba(0,255,200,${0.32*u.beamAlpha})`);
+    beam.addColorStop(.7,`rgba(0,255,200,${0.07*u.beamAlpha})`);
+    beam.addColorStop(1,'rgba(0,255,200,0)');
+    ctx.beginPath();
+    ctx.moveTo(x-bw*.3,y+s*.35); ctx.lineTo(x+bw*.3,y+s*.35);
+    ctx.lineTo(x+bw,y+u.beamLen); ctx.lineTo(x-bw,y+u.beamLen);
+    ctx.closePath(); ctx.fillStyle=beam; ctx.fill();
   }
 
-  if(u.signAlpha>0){
-    const sx=x,sy=y+u.beamLen*.55,sw=180,sh=40;
-    ctx.save(); ctx.globalAlpha=u.signAlpha;
-    const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,sw*.8);
-    sg.addColorStop(0,'rgba(0,255,200,0.14)'); sg.addColorStop(1,'rgba(0,255,200,0)');
-    ctx.fillStyle=sg; ctx.fillRect(sx-sw,sy-sh*2,sw*2,sh*4);
-    ctx.fillStyle='rgba(0,8,6,0.92)'; ctx.strokeStyle='rgba(0,255,175,0.65)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.rect(sx-sw/2,sy-sh/2,sw,sh); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='rgba(0,255,185,0.97)'; ctx.font='bold 14px "Courier New",monospace';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('COMING SOON', sx, sy);
-    ctx.restore();
-  }
-
+  // glow
   const g=ctx.createRadialGradient(x,y,0,x,y,s*4.5);
   g.addColorStop(0,'rgba(0,255,200,0.14)'); g.addColorStop(1,'rgba(0,255,200,0)');
   ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,s*4.5,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x,y+2,s,s*.34,0,0,Math.PI*2); ctx.fillStyle='#070707'; ctx.fill();
-  ctx.strokeStyle='rgba(0,215,175,0.6)'; ctx.lineWidth=.9; ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(x,y,s*.46,s*.27,0,Math.PI,Math.PI*2); ctx.fillStyle='#0c0c0c'; ctx.fill();
-  ctx.strokeStyle='rgba(0,215,175,0.32)'; ctx.lineWidth=.8; ctx.stroke();
+  // body
+  ctx.beginPath(); ctx.ellipse(x,y+2,s,s*.34,0,0,Math.PI*2);
+  ctx.fillStyle='#070707'; ctx.fill();
+  ctx.strokeStyle='rgba(0,215,175,0.65)'; ctx.lineWidth=1; ctx.stroke();
+  // dome
+  ctx.beginPath(); ctx.ellipse(x,y,s*.46,s*.27,0,Math.PI,Math.PI*2);
+  ctx.fillStyle='#0c0c0c'; ctx.fill();
+  ctx.strokeStyle='rgba(0,215,175,0.35)'; ctx.lineWidth=.8; ctx.stroke();
+  // strip
   const strip=ctx.createLinearGradient(x-s*.65,y+4,x+s*.65,y+4);
-  strip.addColorStop(0,'rgba(0,255,200,0)'); strip.addColorStop(.5,'rgba(0,255,200,0.42)'); strip.addColorStop(1,'rgba(0,255,200,0)');
+  strip.addColorStop(0,'rgba(0,255,200,0)'); strip.addColorStop(.5,'rgba(0,255,200,0.45)'); strip.addColorStop(1,'rgba(0,255,200,0)');
   ctx.strokeStyle=strip; ctx.lineWidth=1.6;
   ctx.beginPath(); ctx.moveTo(x-s*.65,y+4); ctx.lineTo(x+s*.65,y+4); ctx.stroke();
 }
@@ -177,20 +217,17 @@ let t=0;
 function frame(){
   ctx.clearRect(0,0,W,H);
 
-  // sky
   const [top,mid,hor]=getSky();
   const g=ctx.createLinearGradient(0,0,0,H*.88);
   g.addColorStop(0,top); g.addColorStop(.5,mid); g.addColorStop(1,hor);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-  // bg stars
   bgStars.forEach(s=>{
     const tw=.5+.5*Math.sin(t*s.ts+s.tp);
     ctx.beginPath(); ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
     ctx.fillStyle=`rgba(255,255,255,${s.a*tw})`; ctx.fill();
   });
 
-  // aurora
   const aStr=auroraA();
   if(aStr>0) aWaves.forEach(b=>{
     ctx.beginPath(); ctx.moveTo(0,H*b.y);
@@ -199,7 +236,6 @@ function frame(){
     ctx.lineWidth=b.w; ctx.stroke();
   });
 
-  // named stars
   STARS.forEach((s,i)=>{
     const p=spos[s.n]; if(!p) return;
     const c=project(p.alt,p.az); if(!c) return;
@@ -207,10 +243,8 @@ function frame(){
     const r=.9+Math.max(0,(2.5-s.mag)/2.0);
     ctx.beginPath(); ctx.arc(c.x,c.y,r,0,Math.PI*2);
     ctx.fillStyle=`rgba(210,225,255,${tw*.95})`; ctx.fill();
-    if(s.mag<0.5){ ctx.beginPath(); ctx.arc(c.x,c.y,r*3.5,0,Math.PI*2); ctx.fillStyle='rgba(180,210,255,0.07)'; ctx.fill(); }
   });
 
-  // comets
   for(let i=comets.length-1;i>=0;i--){
     const c=comets[i];
     const tx=c.x-(c.vx/Math.abs(c.vx))*c.len,ty=c.y-c.vy*(c.len/Math.abs(c.vx));
@@ -222,13 +256,14 @@ function frame(){
     if(c.alpha<=0||c.y>H*.88) comets.splice(i,1);
   }
 
-  // horizon — clean dark line, nothing else
-  ctx.fillStyle='#000';
-  ctx.fillRect(0,H*.88,W,H*.12);
+  // horizon
+  ctx.fillStyle='#000'; ctx.fillRect(0,H*.88,W,H*.12);
   ctx.beginPath(); ctx.moveTo(0,H*.88); ctx.lineTo(W,H*.88);
-  ctx.strokeStyle='rgba(255,140,40,0.06)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='rgba(80,80,80,0.12)'; ctx.lineWidth=1; ctx.stroke();
 
   updateUFO(); drawUFO();
+  drawBillboard(ufo.litAlpha);
+
   t+=16; requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
