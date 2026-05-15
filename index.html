@@ -10,8 +10,9 @@
   canvas { display:block; position:absolute; inset:0; }
   #ui { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between; padding:1.8rem 2.2rem; pointer-events:none; color:white; }
   #top { display:flex; justify-content:space-between; font-size:.6rem; letter-spacing:.2em; opacity:.7; }
-  #bottom { display:flex; justify-content:space-between; font-size:.55rem; letter-spacing:.16em; opacity:.6; }
+  #bottom { display:flex; justify-content:space-between; align-items:flex-end; font-size:.55rem; letter-spacing:.16em; opacity:.6; }
   #aurora-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:#00ffb8; box-shadow:0 0 6px #00ffb8; margin-right:.45rem; animation:blink 2s ease-in-out infinite; }
+  #weather-info { font-size:.55rem; letter-spacing:.12em; opacity:.6; margin-bottom:.2rem; }
   @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
 </style>
 </head>
@@ -19,7 +20,13 @@
 <canvas id="c"></canvas>
 <div id="ui">
   <div id="top"><span>58.3005° N  134.4197° W</span><span id="clock"></span></div>
-  <div id="bottom"><span><span id="aurora-dot"></span>AURORA MONITOR ACTIVE</span><span>JUNEAU · ALASKA</span></div>
+  <div id="bottom">
+    <div>
+      <div id="weather-info">FETCHING CONDITIONS...</div>
+      <span><span id="aurora-dot"></span>AURORA MONITOR ACTIVE</span>
+    </div>
+    <span>JUNEAU · ALASKA</span>
+  </div>
 </div>
 <script>
 const cv=document.getElementById('c'), ctx=cv.getContext('2d');
@@ -30,8 +37,71 @@ resize(); window.addEventListener('resize',resize);
 function updateClock(){ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' AKDT'; }
 setInterval(updateClock,1000); updateClock();
 
-// ── ASTRONOMY ──
-const LAT_R=58.3005*Math.PI/180, LON=-134.4197;
+// ── WEATHER ──
+let weather={ cloudCover:0, rain:false, snow:false, desc:'CLEAR' };
+async function fetchWeather(){
+  try {
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=58.3005&longitude=-134.4197&current=weathercode,cloudcover,precipitation&timezone=America%2FAnchorage');
+    const d=await r.json();
+    const cc=d.current.cloudcover||0;
+    const precip=d.current.precipitation||0;
+    const wc=d.current.weathercode||0;
+    weather.cloudCover=cc/100;
+    weather.rain=wc>=51&&wc<=67;
+    weather.snow=wc>=71&&wc<=77;
+    const descs={0:'CLEAR',1:'MAINLY CLEAR',2:'PARTLY CLOUDY',3:'OVERCAST',51:'DRIZZLE',53:'DRIZZLE',61:'RAIN',63:'RAIN',71:'SNOW',73:'SNOW',80:'SHOWERS',95:'THUNDERSTORM'};
+    weather.desc=descs[wc]||`CODE ${wc}`;
+    document.getElementById('weather-info').textContent=`CONDITIONS: ${weather.desc} · CLOUD COVER: ${cc}%`;
+  } catch(e){ document.getElementById('weather-info').textContent='CONDITIONS: UNKNOWN'; }
+}
+fetchWeather(); setInterval(fetchWeather,600000);
+
+// ── ASTRONOMICAL SUNRISE/SUNSET (Juneau) ──
+const LAT=58.3005, LON=-134.4197;
+const LAT_R=LAT*Math.PI/180;
+
+function calcSunTimes(date){
+  const JD=date.getTime()/86400000+2440587.5;
+  const n=Math.round(JD-2451545-0.0009+LON/360);
+  const Js=2451545+0.0009-LON/360+n;
+  const M=(357.5291+0.98560028*(Js-2451545))%360;
+  const Mr=M*Math.PI/180;
+  const C=1.9148*Math.sin(Mr)+0.0200*Math.sin(2*Mr)+0.0003*Math.sin(3*Mr);
+  const lam=(M+C+180+102.9372)%360;
+  const Jt=Js+0.0053*Math.sin(Mr)-0.0069*Math.sin(2*lam*Math.PI/180);
+  const sinD=Math.sin(lam*Math.PI/180)*Math.sin(23.4397*Math.PI/180);
+  const cosH0=(Math.sin(-0.833*Math.PI/180)-Math.sin(LAT_R)*sinD)/(Math.cos(LAT_R)*Math.cos(Math.asin(sinD)));
+  if(cosH0<-1) return{rise:0,set:24,firstLight:0,lastLight:24}; // midnight sun
+  if(cosH0>1)  return{rise:12,set:12,firstLight:12,lastLight:12}; // polar night
+  const H0=Math.acos(cosH0)*180/Math.PI;
+  const Jrise=Jt-H0/360;
+  const Jset=Jt+H0/360;
+  function jdToHour(jd){ return((jd-Math.floor(jd-.5)-.5)*24+24*(LON/-360)+9)%24; } // AKDT offset
+  const rise=((Jrise%1)*24+24-(LON/-15)/60+9)%24;
+  const set=((Jset%1)*24+24-(LON/-15)/60+9)%24;
+  // Approximate: use UTC offset for AKDT (-8)
+  const riseUTC=(Jrise%1)*24;
+  const setUTC=(Jset%1)*24;
+  const offset=-8; // AKDT
+  const riseLocal=(riseUTC+24+offset)%24;
+  const setLocal=(setUTC+24+offset)%24;
+  return{
+    rise:riseLocal,
+    set:setLocal,
+    firstLight:riseLocal-0.9,
+    lastLight:setLocal+0.9
+  };
+}
+
+let sunTimes=calcSunTimes(new Date());
+setInterval(()=>sunTimes=calcSunTimes(new Date()),60000);
+
+function getHourF(){ const n=new Date(); return n.getHours()+n.getMinutes()/60+n.getSeconds()/3600; }
+function isDay(){ const h=getHourF(); return h>=sunTimes.rise&&h<sunTimes.set; }
+function isDusk(){ const h=getHourF(); return h>=sunTimes.set&&h<sunTimes.lastLight; }
+function isDawn(){ const h=getHourF(); return h>=sunTimes.firstLight&&h<sunTimes.rise; }
+
+// ── STAR POSITIONS ──
 function jd(d){ return d.getTime()/86400000+2440587.5; }
 function lst(date){ const j=jd(date),T=(j-2451545)/36525; return((280.46061837+360.98564736629*(j-2451545)+T*T*.000387933+LON)%360+360)%360; }
 function toAltAz(ra,dec,date){
@@ -46,7 +116,7 @@ function toAltAz(ra,dec,date){
 function project(alt,az){
   if(alt<-2) return null;
   const hy=H*0.88;
-  return{x:W/2+((((az-180+180)%360)-180)/95)*(W/2), y:hy-(Math.max(0,alt)/90)*hy*0.94};
+  return{x:W/2+((((az-180+180)%360)-180)/95)*(W/2),y:hy-(Math.max(0,alt)/90)*hy*0.94};
 }
 const STARS=[
   {n:'Dubhe',ra:11.0621,dec:61.751,mag:1.8},{n:'Merak',ra:11.0307,dec:56.383,mag:2.4},
@@ -60,59 +130,142 @@ let spos={};
 function updatePos(){ const now=new Date(); STARS.forEach(s=>{spos[s.n]={...toAltAz(s.ra,s.dec,now),mag:s.mag};}); }
 updatePos(); setInterval(updatePos,15000);
 
-const bgStars=Array.from({length:300},()=>({
-  x:Math.random(),y:Math.random()*.88,
-  r:Math.random()*.9+.15,a:Math.random()*.6+.2,
-  ts:Math.random()*.002+.0004,tp:Math.random()*Math.PI*2
-}));
+const bgStars=Array.from({length:300},()=>({x:Math.random(),y:Math.random()*.88,r:Math.random()*.9+.15,a:Math.random()*.6+.2,ts:Math.random()*.002+.0004,tp:Math.random()*Math.PI*2}));
 
+// ── SKY COLOR ──
 function getSky(){
-  const h=new Date().getHours()+new Date().getMinutes()/60;
-  if(h>=22||h<4)  return['#000005','#00020c','#000e1a'];
-  if(h<6)         return['#000008','#04020e','#18071e'];
-  if(h<8)         return['#00000e','#070318','#260830'];
-  return                 ['#000012','#030716','#060e1e'];
+  const h=getHourF(), r=sunTimes.rise, s=sunTimes.set, fl=sunTimes.firstLight, ll=sunTimes.lastLight;
+  if(h<fl||h>=ll+0.5)   return['#000005','#00020c','#000e1a']; // night
+  if(h<r-0.5)            return['#000008','#04020e','#18071e']; // pre-dawn
+  if(h<r)                return['#00000e','#0a0418','#3a0a20']; // dawn glow
+  if(h<r+1)              return['#050a1a','#1a1040','#c04020']; // sunrise
+  if(h<r+2)              return['#0a1428','#1e2a50','#4a6090']; // early morning
+  if(h<s-2)              return['#0a1830','#1a3060','#2a5090']; // day
+  if(h<s)                return['#080f22','#152040','#803020']; // sunset
+  if(h<ll)               return['#040810','#0a1020','#401810']; // dusk
+  return                        ['#000005','#00020c','#000e1a']; // night
 }
 
+// star visibility
+function starAlpha(){
+  const h=getHourF(), r=sunTimes.rise, s=sunTimes.set;
+  if(h>=r+1&&h<s-1) return 0;
+  if(h>=r&&h<r+1) return 1-(h-r);
+  if(h>=s-1&&h<s) return 1-(s-h);
+  return 1;
+}
+
+// ── SUN ──
+function getSunPos(){
+  const h=getHourF(), r=sunTimes.rise, s=sunTimes.set;
+  if(h<r||h>=s) return null;
+  const prog=(h-r)/(s-r);
+  const x=W*(.04+prog*.92);
+  const arc=Math.sin(prog*Math.PI);
+  const y=H*(.88-arc*.7);
+  return{x,y,arc,prog};
+}
+function drawSun(){
+  const sp=getSunPos(); if(!sp) return;
+  const{x,y,arc,prog}=sp;
+  if(y>=H*.88) return;
+  const rising=prog<0.15||prog>0.85;
+  const r=rising?26:20;
+  const col=rising?'rgba(255,150,40,1)':'rgba(255,225,110,1)';
+  const gc=rising?'rgba(255,130,30,':'rgba(255,210,80,';
+  const g=ctx.createRadialGradient(x,y,0,x,y,r*5);
+  g.addColorStop(0,gc+'0.35)'); g.addColorStop(.5,gc+'0.1)'); g.addColorStop(1,gc+'0)');
+  ctx.fillStyle=g; ctx.fillRect(x-r*5,y-r*5,r*10,r*10);
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+}
+
+// ── CLOUDS / RAIN / SNOW ──
+const cloudParticles=[];
+function drawWeatherEffects(){
+  const cc=weather.cloudCover;
+  if(cc<0.3) return;
+  ctx.save(); ctx.globalAlpha=cc*.35;
+  // cloud patches
+  for(let i=0;i<Math.floor(cc*8);i++){
+    const cx=((i/8)*W+t*.05)%W;
+    const cy=H*(.05+i*.06);
+    const cw=W*.18; const ch=H*.04;
+    const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,cw);
+    cg.addColorStop(0,'rgba(150,160,180,0.4)'); cg.addColorStop(1,'rgba(150,160,180,0)');
+    ctx.fillStyle=cg; ctx.fillRect(cx-cw,cy-ch,cw*2,ch*2);
+  }
+  ctx.restore();
+  // rain
+  if(weather.rain){
+    ctx.save(); ctx.globalAlpha=0.25; ctx.strokeStyle='rgba(180,200,220,0.6)'; ctx.lineWidth=.8;
+    for(let i=0;i<80;i++){
+      const rx=((i*137+t*.8)%W);
+      const ry=((i*73+t*3)%(H*.88));
+      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-2,ry+12); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // snow
+  if(weather.snow){
+    ctx.save(); ctx.fillStyle='rgba(220,230,255,0.7)';
+    for(let i=0;i<60;i++){
+      const sx=((i*97+t*.3)%W);
+      const sy=((i*61+t*1.2)%(H*.88));
+      ctx.beginPath(); ctx.arc(sx,sy,1.2,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ── AURORA ──
 const aWaves=[
   {y:.04,amp:40,freq:.0017,spd:.00017,color:[0,255,155],  w:115,ph:0.0},
   {y:.02,amp:55,freq:.0013,spd:.00024,color:[110,45,255], w:145,ph:2.3},
   {y:.07,amp:30,freq:.0015,spd:.00019,color:[0,195,255],  w:82, ph:5.1},
 ];
-function auroraA(){ const h=new Date().getHours(); return h>=21||h<6?.52:h<8||h>=19?.16:0; }
+function auroraA(){
+  const sa=starAlpha(); if(sa<0.5) return 0;
+  const h=getHourF(); return h>=21||h<sunTimes.firstLight?.52:.16;
+}
 
+// ── COMETS ──
 const comets=[];
-function spawnComet(){ comets.push({x:Math.random()*W,y:Math.random()*H*.5,vx:(Math.random()*3+2)*(Math.random()<.5?1:-1),vy:Math.random()*1.2+.3,len:Math.random()*150+70,alpha:1,r:Math.random()*.7+.25}); }
+function spawnComet(){ if(starAlpha()>0.5) comets.push({x:Math.random()*W,y:Math.random()*H*.5,vx:(Math.random()*3+2)*(Math.random()<.5?1:-1),vy:Math.random()*1.2+.3,len:Math.random()*150+70,alpha:1,r:Math.random()*.7+.25}); }
 spawnComet(); setInterval(()=>Math.random()<.4&&spawnComet(),7000);
 
-const HY=()=>H*.88;
-
-// ── BILLBOARD — centered on horizon ──
-const BW=180, BH=52, BPOST=38;
+// ── BILLBOARD ──
+const HY=()=>H*.88, BW=180,BH=52,BPOST=38;
 function bbX(){ return W*.5; }
 function bbY(){ return HY()-BPOST; }
 
 function drawBillboard(lit){
-  const x=bbX(), y=bbY();
-  // post
-  ctx.strokeStyle='rgba(80,80,80,0.7)'; ctx.lineWidth=3;
+  const x=bbX(),y=bbY(),day=isDay()||isDusk()||isDawn()&&getHourF()>sunTimes.rise;
+  ctx.strokeStyle=day?'rgba(120,100,70,0.9)':'rgba(80,80,80,0.7)'; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+BPOST); ctx.stroke();
-  // board
-  ctx.fillStyle='#050505';
-  ctx.strokeStyle=lit>0?`rgba(0,255,175,${0.4+lit*.3})`:'rgba(30,30,30,0.8)';
+  ctx.fillStyle=day?'#1a1510':'#050505';
+  ctx.strokeStyle=day?'rgba(140,120,70,0.8)':lit>0?`rgba(0,255,175,${0.4+lit*.3})`:'rgba(30,30,30,0.8)';
   ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.rect(x-BW/2,y-BH,BW,BH); ctx.fill(); ctx.stroke();
-  // text lights up with beam
-  if(lit>0){
+  const h=getHourF();
+  const showDay=h>=sunTimes.rise&&h<sunTimes.set;
+  if(showDay){
+    ctx.fillStyle='rgba(220,200,130,0.95)';
+    ctx.font="bold 17px 'Courier New',monospace";
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText("DON'T PANIC", x, y-BH*.55);
+    ctx.font="8px 'Courier New',monospace";
+    ctx.fillStyle='rgba(180,155,90,0.7)';
+    ctx.fillText('CHEZPREFECT.COM', x, y-BH*.18);
+  } else if(lit>0){
     ctx.save(); ctx.globalAlpha=lit;
     const sg=ctx.createRadialGradient(x,y-BH/2,0,x,y-BH/2,BW*.8);
     sg.addColorStop(0,'rgba(0,255,200,0.15)'); sg.addColorStop(1,'rgba(0,255,200,0)');
     ctx.fillStyle=sg; ctx.fillRect(x-BW,y-BH*3,BW*2,BH*3.5);
     ctx.fillStyle=`rgba(0,255,185,${lit})`;
-    ctx.font='bold 15px "Courier New",monospace';
+    ctx.font="bold 15px 'Courier New',monospace";
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('COMING SOON', x, y-BH*.6);
-    ctx.font='8px "Courier New",monospace';
+    ctx.font="9px 'Courier New',monospace";
     ctx.fillStyle=`rgba(0,200,150,${lit*.7})`;
     ctx.fillText('CHEZPREFECT.COM', x, y-BH*.2);
     ctx.restore();
@@ -120,36 +273,39 @@ function drawBillboard(lit){
 }
 
 // ── UFO ──
-const ufo={x:0,y:0,size:16,speed:0,phase:'init',
-  wps:[],wpIdx:0,stopX:0,stopY:0,
-  beamLen:0,beamMax:0,beamAlpha:0,
+const ufo={x:0,y:0,size:16,speed:0,phase:'init',wps:[],wpIdx:0,
+  stopX:0,stopY:0,beamLen:0,beamMax:0,beamAlpha:0,
   litAlpha:0,holdTimer:0,waitTimer:0};
 
-function initUFO(){
-  // zigzag waypoints, then stop directly above billboard
+function makeNightWPs(){
   const pts=[];
-  for(let i=0;i<=5;i++) pts.push({
-    x:-80+(i/5)*(W+160),
-    y:H*(.08+(i%2===0?.02:.11)+Math.random()*.04)
-  });
-  const sx=bbX(), sy=H*.38;
-  pts.push({x:sx, y:sy});
-  ufo.wps=pts; ufo.wpIdx=0;
-  ufo.x=pts[0].x; ufo.y=pts[0].y;
+  for(let i=0;i<=5;i++) pts.push({x:-80+(i/5)*(W+160),y:H*(.08+(i%2===0?.02:.11)+Math.random()*.04)});
+  pts.push({x:bbX(),y:H*.38});
+  return pts;
+}
+function makeDayWPs(){
+  const pts=[];
+  for(let i=0;i<=6;i++) pts.push({x:-120+(i/6)*(W+240),y:H*(.1+(i%2===0?.02:.09)+Math.random()*.04)});
+  return pts;
+}
+
+function initUFO(){
+  const day=isDay();
+  ufo.wps=day?makeDayWPs():makeNightWPs();
+  ufo.wpIdx=0; ufo.x=ufo.wps[0].x; ufo.y=ufo.wps[0].y;
   ufo.speed=1.8; ufo.phase='flying';
   ufo.beamLen=0; ufo.beamAlpha=0; ufo.litAlpha=0; ufo.holdTimer=0; ufo.waitTimer=0;
-  ufo.stopX=sx; ufo.stopY=sy;
-  ufo.beamMax=HY()-sy;
+  if(!day){ ufo.stopX=bbX(); ufo.stopY=H*.38; ufo.beamMax=HY()-H*.38; }
 }
 initUFO();
 
 function updateUFO(){
-  const u=ufo;
+  const u=ufo, day=isDay();
   if(u.phase==='flying'){
     const wp=u.wps[Math.min(u.wpIdx+1,u.wps.length-1)];
     const dx=wp.x-u.x,dy=wp.y-u.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-    if(d<6){u.wpIdx++; if(u.wpIdx>=u.wps.length-1) u.phase='stopping';}
-    else{u.x+=dx/d*u.speed; u.y+=dy/d*u.speed;}
+    if(d<6){ u.wpIdx++; if(u.wpIdx>=u.wps.length-1){ u.phase=day?'waiting':'stopping'; } }
+    else{ u.x+=dx/d*u.speed; u.y+=dy/d*u.speed; }
   } else if(u.phase==='stopping'){
     u.speed*=0.9;
     const dx=u.stopX-u.x,dy=u.stopY-u.y,d=Math.sqrt(dx*dx+dy*dy)||1;
@@ -158,13 +314,13 @@ function updateUFO(){
   } else if(u.phase==='beaming'){
     u.beamAlpha=Math.min(u.beamAlpha+0.04,1);
     u.beamLen=Math.min(u.beamLen+4,u.beamMax);
-    u.litAlpha=Math.min(u.litAlpha+0.015, u.beamLen/u.beamMax);
+    // sign only lights when beam reaches the board
+    u.litAlpha=Math.min(Math.max((u.beamLen-u.beamMax*.85)/(u.beamMax*.15),0),1);
     if(u.beamLen>=u.beamMax){ u.phase='holding'; u.holdTimer=0; }
   } else if(u.phase==='holding'){
-    u.holdTimer++;
-    if(u.holdTimer>220) u.phase='retracting';
+    u.holdTimer++; if(u.holdTimer>220) u.phase='retracting';
   } else if(u.phase==='retracting'){
-    u.litAlpha=Math.max(u.litAlpha-0.02,0);
+    u.litAlpha=Math.max(u.litAlpha-0.03,0);
     u.beamLen=Math.max(u.beamLen-5,0);
     u.beamAlpha=u.beamLen>0?Math.min(u.beamAlpha,u.beamLen/50):0;
     if(u.beamLen<=0){ u.beamAlpha=0; u.litAlpha=0; u.phase='departing'; u.speed=0.8; }
@@ -172,43 +328,48 @@ function updateUFO(){
     u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed; u.y-=u.speed*.1;
     if(u.x>W+160) u.phase='waiting';
   } else if(u.phase==='waiting'){
-    u.waitTimer++;
-    if(u.waitTimer>200) initUFO();
+    u.waitTimer++; if(u.waitTimer>180) initUFO();
   }
 }
 
-function drawUFO(){
-  const u=ufo,x=u.x,y=u.y,s=u.size;
-  if(u.phase==='waiting'||u.phase==='init') return;
+function drawBanner(x,y){
+  const rl=60,bw=230,bh=28;
+  ctx.beginPath(); ctx.moveTo(x+ufo.size,y+4); ctx.lineTo(x+rl,y+6);
+  ctx.strokeStyle='rgba(200,190,160,0.6)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='rgba(245,238,210,0.93)';
+  ctx.strokeStyle='rgba(160,140,90,0.6)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.rect(x+rl,y+6-bh/2,bw,bh); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#1a1200';
+  ctx.font="bold 10px 'Courier New',monospace";
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText('CHEZPREFECT.COM — COMING SOON', x+rl+10, y+6);
+}
 
-  // beam — drawn so it lands exactly on the billboard
-  if(u.beamLen>0 && u.beamAlpha>0){
+function drawUFO(){
+  const u=ufo,x=u.x,y=u.y,s=u.size, day=isDay();
+  if(u.phase==='waiting'||u.phase==='init') return;
+  if(!day&&u.beamLen>0&&u.beamAlpha>0){
     const bw=s*2;
     const beam=ctx.createLinearGradient(x,y+s*.35,x,y+u.beamLen);
     beam.addColorStop(0,`rgba(0,255,200,${0.32*u.beamAlpha})`);
     beam.addColorStop(.7,`rgba(0,255,200,${0.07*u.beamAlpha})`);
     beam.addColorStop(1,'rgba(0,255,200,0)');
-    ctx.beginPath();
-    ctx.moveTo(x-bw*.3,y+s*.35); ctx.lineTo(x+bw*.3,y+s*.35);
+    ctx.beginPath(); ctx.moveTo(x-bw*.3,y+s*.35); ctx.lineTo(x+bw*.3,y+s*.35);
     ctx.lineTo(x+bw,y+u.beamLen); ctx.lineTo(x-bw,y+u.beamLen);
     ctx.closePath(); ctx.fillStyle=beam; ctx.fill();
   }
-
-  // glow
-  const g=ctx.createRadialGradient(x,y,0,x,y,s*4.5);
-  g.addColorStop(0,'rgba(0,255,200,0.14)'); g.addColorStop(1,'rgba(0,255,200,0)');
-  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,s*4.5,0,Math.PI*2); ctx.fill();
-  // body
-  ctx.beginPath(); ctx.ellipse(x,y+2,s,s*.34,0,0,Math.PI*2);
-  ctx.fillStyle='#070707'; ctx.fill();
-  ctx.strokeStyle='rgba(0,215,175,0.65)'; ctx.lineWidth=1; ctx.stroke();
-  // dome
-  ctx.beginPath(); ctx.ellipse(x,y,s*.46,s*.27,0,Math.PI,Math.PI*2);
-  ctx.fillStyle='#0c0c0c'; ctx.fill();
-  ctx.strokeStyle='rgba(0,215,175,0.35)'; ctx.lineWidth=.8; ctx.stroke();
-  // strip
+  if(day&&(u.phase==='flying'||u.phase==='departing')) drawBanner(x,y);
+  const gc=day?'rgba(200,220,255,':'rgba(0,255,200,';
+  const g=ctx.createRadialGradient(x,y,0,x,y,s*4);
+  g.addColorStop(0,gc+'0.12)'); g.addColorStop(1,gc+'0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,s*4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x,y+2,s,s*.34,0,0,Math.PI*2); ctx.fillStyle='#070707'; ctx.fill();
+  ctx.strokeStyle=day?'rgba(180,200,220,0.7)':'rgba(0,215,175,0.65)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(x,y,s*.46,s*.27,0,Math.PI,Math.PI*2); ctx.fillStyle='#0c0c0c'; ctx.fill();
+  ctx.strokeStyle=day?'rgba(180,200,220,0.35)':'rgba(0,215,175,0.35)'; ctx.lineWidth=.8; ctx.stroke();
+  const sc=day?'rgba(180,220,255,':'rgba(0,255,200,';
   const strip=ctx.createLinearGradient(x-s*.65,y+4,x+s*.65,y+4);
-  strip.addColorStop(0,'rgba(0,255,200,0)'); strip.addColorStop(.5,'rgba(0,255,200,0.45)'); strip.addColorStop(1,'rgba(0,255,200,0)');
+  strip.addColorStop(0,sc+'0)'); strip.addColorStop(.5,sc+'0.45)'); strip.addColorStop(1,sc+'0)');
   ctx.strokeStyle=strip; ctx.lineWidth=1.6;
   ctx.beginPath(); ctx.moveTo(x-s*.65,y+4); ctx.lineTo(x+s*.65,y+4); ctx.stroke();
 }
@@ -216,17 +377,31 @@ function drawUFO(){
 let t=0;
 function frame(){
   ctx.clearRect(0,0,W,H);
+  const sa=starAlpha(), day=isDay();
 
   const [top,mid,hor]=getSky();
   const g=ctx.createLinearGradient(0,0,0,H*.88);
   g.addColorStop(0,top); g.addColorStop(.5,mid); g.addColorStop(1,hor);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-  bgStars.forEach(s=>{
-    const tw=.5+.5*Math.sin(t*s.ts+s.tp);
-    ctx.beginPath(); ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
-    ctx.fillStyle=`rgba(255,255,255,${s.a*tw})`; ctx.fill();
-  });
+  drawSun();
+  drawWeatherEffects();
+
+  if(sa>0){
+    bgStars.forEach(s=>{
+      const tw=.5+.5*Math.sin(t*s.ts+s.tp);
+      ctx.beginPath(); ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,255,255,${s.a*tw*sa})`; ctx.fill();
+    });
+    STARS.forEach((s,i)=>{
+      const p=spos[s.n]; if(!p) return;
+      const c=project(p.alt,p.az); if(!c) return;
+      const tw=.55+.45*Math.sin(t*.0006+i*.7);
+      const r=.9+Math.max(0,(2.5-s.mag)/2.0);
+      ctx.beginPath(); ctx.arc(c.x,c.y,r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(210,225,255,${tw*.95*sa})`; ctx.fill();
+    });
+  }
 
   const aStr=auroraA();
   if(aStr>0) aWaves.forEach(b=>{
@@ -236,30 +411,21 @@ function frame(){
     ctx.lineWidth=b.w; ctx.stroke();
   });
 
-  STARS.forEach((s,i)=>{
-    const p=spos[s.n]; if(!p) return;
-    const c=project(p.alt,p.az); if(!c) return;
-    const tw=.55+.45*Math.sin(t*.0006+i*.7);
-    const r=.9+Math.max(0,(2.5-s.mag)/2.0);
-    ctx.beginPath(); ctx.arc(c.x,c.y,r,0,Math.PI*2);
-    ctx.fillStyle=`rgba(210,225,255,${tw*.95})`; ctx.fill();
-  });
-
   for(let i=comets.length-1;i>=0;i--){
     const c=comets[i];
     const tx=c.x-(c.vx/Math.abs(c.vx))*c.len,ty=c.y-c.vy*(c.len/Math.abs(c.vx));
     const cg=ctx.createLinearGradient(c.x,c.y,tx,ty);
-    cg.addColorStop(0,`rgba(255,255,255,${c.alpha*.9})`); cg.addColorStop(1,'rgba(255,255,255,0)');
+    cg.addColorStop(0,`rgba(255,255,255,${c.alpha*.9*sa})`); cg.addColorStop(1,'rgba(255,255,255,0)');
     ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(tx,ty);
     ctx.strokeStyle=cg; ctx.lineWidth=c.r; ctx.stroke();
     c.x+=c.vx; c.y+=c.vy; c.alpha-=.003;
     if(c.alpha<=0||c.y>H*.88) comets.splice(i,1);
   }
 
-  // horizon
-  ctx.fillStyle='#000'; ctx.fillRect(0,H*.88,W,H*.12);
+  ctx.fillStyle=day?'#201a10':'#000';
+  ctx.fillRect(0,H*.88,W,H*.12);
   ctx.beginPath(); ctx.moveTo(0,H*.88); ctx.lineTo(W,H*.88);
-  ctx.strokeStyle='rgba(80,80,80,0.12)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle=day?'rgba(140,120,70,0.2)':'rgba(80,80,80,0.12)'; ctx.lineWidth=1; ctx.stroke();
 
   updateUFO(); drawUFO();
   drawBillboard(ufo.litAlpha);
