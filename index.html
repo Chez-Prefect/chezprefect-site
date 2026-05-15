@@ -3,23 +3,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chez Prefect</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:#000; overflow:hidden; width:100vw; height:100vh; font-family:'Courier New',monospace; }
   canvas { display:block; position:absolute; inset:0; }
   #ui { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between; padding:1.8rem 2.2rem; pointer-events:none; color:white; z-index:10; }
-  #top { display:flex; justify-content:space-between; font-size:.75rem; letter-spacing:.2em; opacity:.7; }
-  #bottom { display:flex; justify-content:space-between; font-size:.7rem; letter-spacing:.16em; opacity:.6; }
-  #aurora-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#00ffb8; box-shadow:0 0 6px #00ffb8; margin-right:.45rem; animation:blink 2s ease-in-out infinite; }
-  #weather-info { font-size:.7rem; letter-spacing:.12em; margin-bottom:.2rem; }
+  #top { display:flex; justify-content:space-between; font-size:.6rem; letter-spacing:.2em; opacity:.7; }
+  #bottom { display:flex; justify-content:space-between; font-size:.55rem; letter-spacing:.16em; opacity:.6; }
+  #aurora-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:#00ffb8; box-shadow:0 0 6px #00ffb8; margin-right:.45rem; animation:blink 2s ease-in-out infinite; }
+  #weather-info { font-size:.55rem; letter-spacing:.12em; margin-bottom:.2rem; }
   @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
   @media (max-width: 480px) {
     #ui { padding: 1.2rem 1.1rem; }
-    #top { font-size: .65rem; letter-spacing: .12em; }
-    #bottom { font-size: .62rem; letter-spacing: .1em; }
-    #weather-info { font-size: .62rem; }
+    #top { font-size: 0.8rem; letter-spacing: .1em; }
+    #bottom { font-size: 0.75rem; letter-spacing: .08em; }
+    #weather-info { font-size: 0.75rem; }
   }
 </style>
 </head>
@@ -50,7 +50,6 @@ let W,H;
 function resize(){
 W=skyC.width=rainC.width=fxC.width=window.innerWidth;
 H=skyC.height=rainC.height=fxC.height=window.innerHeight;
-
 }
 resize(); window.addEventListener(‘resize’,resize);
 
@@ -392,6 +391,7 @@ function frame(){
 const state=getSkyState();
 updateAlphas(state);
 const s=SKY_STATES[state];
+
 skyCtx.clearRect(0,0,W,H);
 drawSky(state);
 if(alphas.aurora>0.02) drawAurora(alphas.aurora);
@@ -401,6 +401,8 @@ if(alphas.clouds>0.04) drawClouds(alphas.clouds);
 if(alphas.fog>0.04) drawFog(alphas.fog);
 drawHorizon(state);
 drawRain();
+
+// comets
 fxCtx.clearRect(0,0,W,H);
 for(let i=comets.length-1;i>=0;i–){
 const c=comets[i];
@@ -412,8 +414,10 @@ fxCtx.strokeStyle=cg; fxCtx.lineWidth=c.r; fxCtx.stroke();
 c.x+=c.vx; c.y+=c.vy; c.alpha-=.003;
 if(c.alpha<=0||c.y>H*.88) comets.splice(i,1);
 }
+
 updateUFO(); drawUFO();
 drawBillboard(ufo.litAlpha);
+
 t+=16;
 requestAnimationFrame(frame);
 }
