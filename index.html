@@ -51,7 +51,7 @@ async function fetchWeather(){
     weather.snow=wc>=71&&wc<=77;
     const descs={0:'CLEAR',1:'MAINLY CLEAR',2:'PARTLY CLOUDY',3:'OVERCAST',51:'DRIZZLE',53:'DRIZZLE',61:'RAIN',63:'RAIN',71:'SNOW',73:'SNOW',80:'SHOWERS',95:'THUNDERSTORM'};
     weather.desc=descs[wc]||`CODE ${wc}`;
-    document.getElementById('weather-info').textContent=`CONDITIONS: ${weather.desc} · CLOUD COVER: ${cc}%`;
+  document.getElementById('weather-info').textContent=`CONDITIONS: ${weather.desc} · CLOUD: ${Math.round(weather.cloudCover*100)}% · RISE: ${sunTimes.rise.toFixed(2)} SET: ${sunTimes.set.toFixed(2)} FL: ${sunTimes.firstLight.toFixed(2)} H: ${getHourF().toFixed(2)} DAY: ${isDay()}`;
   } catch(e){ document.getElementById('weather-info').textContent='CONDITIONS: UNKNOWN'; }
 }
 fetchWeather(); setInterval(fetchWeather,600000);
