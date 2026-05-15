@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" id="vp">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>Chez Prefect</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -50,9 +50,7 @@ let W,H;
 function resize(){
 W=skyC.width=rainC.width=fxC.width=window.innerWidth;
 H=skyC.height=rainC.height=fxC.height=window.innerHeight;
-// reset any lingering zoom by snapping viewport back
-const vp=document.getElementById(‘vp’);
-vp.setAttribute(‘content’,‘width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no’);
+
 }
 resize(); window.addEventListener(‘resize’,resize);
 
