@@ -1,165 +1,305 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chez Prefect</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-        #root { width: 100%; height: 100%; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chez Prefect</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; overflow:hidden; width:100vw; height:100vh; font-family:'Courier New',monospace; }
+  #scene-wrap {
+    position:absolute;
+    bottom:0; left:50%;
+    transform:translateX(-50%);
+    width:min(100vw, 100vh);
+    height:min(100vw, 100vh);
+    z-index:2;
+    pointer-events:none;
+  }
+  #scene-img {
+    width:100%; height:100%;
+    object-fit:contain;
+    display:block;
+  }
+  canvas { display:block; position:absolute; inset:0; z-index:1; }
+  #ufo-canvas { z-index:3; }
+  #ui {
+    position:absolute; inset:0; z-index:4;
+    display:flex; flex-direction:column;
+    justify-content:space-between;
+    padding:1.8rem 2.2rem;
+    pointer-events:none; color:white;
+  }
+  #top { display:flex; justify-content:space-between; font-size:.6rem; letter-spacing:.2em; opacity:.3; }
+  #bottom { display:flex; justify-content:space-between; font-size:.55rem; letter-spacing:.16em; opacity:.22; }
+  #aurora-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:#00ffb8; box-shadow:0 0 6px #00ffb8; margin-right:.45rem; animation:blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+</style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
 
-        const SKY_STATES = {
-            aurora:      { label:"Transit Log", condition:"Orbital Aurora Active", skyStops:[[0,'#000205'],[0.5,'#010409'],[1,'#020814']], stars:true,  aurora:true,  sun:false,    rim:'rgba(0,255,184,0.3)' },
-            midnight:    { label:"Deep Space",      condition:"System Nominal",      skyStops:[[0,'#000000'],[0.5,'#000103'],[1,'#000205']], stars:true,  aurora:false, sun:false,    rim:'rgba(255,255,255,0.03)' },
-            sunrise:     { label:"Earth Departure", condition:"Atmospheric Break",  skyStops:[[0,'#000000'],[0.4,'#05020a'],[0.7,'#4a1020'],[0.9,'#f4a340'],[1,'#fffce0']], stars:true,  aurora:false, sun:'rising',  rim:'rgba(255,160,40,0.6)' },
-            morning:     { label:"Direct Exposure", condition:"Solar Flare Warning", skyStops:[[0,'#000000'],[0.8,'#010205'],[1,'#050a14']], stars:true,  aurora:false, sun:'high',    rim:'rgba(255,255,255,0.1)' },
-            golden:      { label:"Orbital Sunset",  condition:"Entry Window Open",  skyStops:[[0,'#000000'],[0.4,'#1a0a2e'],[0.6,'#d4602a'],[0.8,'#f0962a'],[1,'#ffdf80']], stars:true,  aurora:false, sun:'setting', rim:'rgba(255,120,30,0.5)' },
-        };
+<!-- Sky/stars canvas behind scene -->
+<canvas id="sky-canvas"></canvas>
 
-        const BIG_DIPPER = [
-            {x: 0.70, y: 0.15}, {x: 0.75, y: 0.18}, {x: 0.79, y: 0.22}, 
-            {x: 0.83, y: 0.26}, {x: 0.88, y: 0.25}, {x: 0.90, y: 0.32}, {x: 0.84, y: 0.33}
-        ];
+<!-- The illustration -->
+<div id="scene-wrap">
+  <img id="scene-img" src="./scene.png" alt="Juneau scene">
+</div>
 
-        const AURORA_BANDS = [
-            {y:.14,amp:50,freq:.0016,speed:.00022,color:[0,255,153],  w:160,phase:0  },
-            {y:.10,amp:65,freq:.0013,speed:.00028,color:[180,79,255], w:190,phase:4.4},
-            {y:.18,amp:55,freq:.0015,speed:.00020,color:[0,232,184],  w:150,phase:3.3},
-        ];
+<!-- UFO/animation canvas on top -->
+<canvas id="ufo-canvas"></canvas>
 
-        function lerp(a,b,s){return a+(b-a)*s;}
-        function getAutoState(){const h=new Date().getHours();if(h>=22||h<5)return 'aurora';if(h<8)return 'sunrise';if(h>=19)return 'golden';return 'morning';}
+<div id="ui">
+  <div id="top"><span>58.3005° N  134.4197° W</span><span id="clock"></span></div>
+  <div id="bottom"><span><span id="aurora-dot"></span>AURORA MONITOR ACTIVE</span><span>JUNEAU · ALASKA</span></div>
+</div>
 
-        function SpaceCanvas({ skyState }) {
-            const skyRef = useRef(null);
-            const animRef = useRef(null);
-            const stateRef = useRef(skyState);
-            const tRef = useRef(0);
-            const alphasRef = useRef({aurora:0,stars:0});
-            const targetsRef = useRef({aurora:0,stars:0});
+<script>
+// ── SETUP ──
+const skyC = document.getElementById('sky-canvas');
+const skyCtx = skyC.getContext('2d');
+const ufoC = document.getElementById('ufo-canvas');
+const ufoCtx = ufoC.getContext('2d');
+let W, H;
 
-            useEffect(()=>{
-                stateRef.current=skyState; 
-                const s=SKY_STATES[skyState]; 
-                targetsRef.current={aurora:s.aurora?1:0,stars:s.stars?1:0};
-            },[skyState]);
+function resize(){
+  W = skyC.width = ufoC.width = window.innerWidth;
+  H = skyC.height = ufoC.height = window.innerHeight;
+}
+resize(); window.addEventListener('resize', resize);
 
-            useEffect(()=>{
-                const sky=skyRef.current; if(!sky)return;
-                const sc=sky.getContext('2d');
-                function resize(){ sky.width=window.innerWidth; sky.height=window.innerHeight; }
-                resize(); window.addEventListener('resize',resize);
+function updateClock(){
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' AKDT';
+}
+setInterval(updateClock,1000); updateClock();
 
-                function frame(){
-                    const W=sky.width, H=sky.height;
-                    const a=alphasRef.current, tg=targetsRef.current;
-                    a.aurora=lerp(a.aurora,tg.aurora,0.02); a.stars=lerp(a.stars,tg.stars,0.02);
-                    sc.clearRect(0,0,W,H);
-                    
-                    // Draw Sky
-                    const s=SKY_STATES[stateRef.current];
-                    const g=sc.createLinearGradient(0,0,0,H);
-                    s.skyStops.forEach(([p,c])=>g.addColorStop(p,c));
-                    sc.fillStyle=g; sc.fillRect(0,0,W,H);
+// ── ASTRONOMY ──
+const LAT_R=58.3005*Math.PI/180, LON=-134.4197;
+const SKY_F=0.52; // stars only fill upper portion above the illustration
 
-                    // Draw Stars
-                    if(a.stars > 0.02) {
-                        const pts=[[.08,.06],[.15,.12],[.23,.04],[.31,.09],[.38,.03],[.45,.07],[.52,.14],[.61,.05],[.12,.18],[.28,.22],[.44,.16],[.58,.20],[.05,.25],[.35,.27],[.19,.30],[.50,.32],[.02,.16],[.47,.28]];
-                        pts.forEach(([sx,sy],i)=>{
-                            const tw=0.5+0.5*Math.sin(tRef.current*0.0008+i*1.3);
-                            sc.beginPath(); sc.arc(sx*W,sy*H,0.8,0,Math.PI*2);
-                            sc.fillStyle=`rgba(255,255,255,${a.stars*tw*0.6})`; sc.fill();
-                        });
-                        BIG_DIPPER.forEach((star, i) => {
-                            const tw=0.7+0.3*Math.sin(tRef.current*0.0005+i);
-                            sc.beginPath(); sc.arc(star.x*W, star.y*H, 1.2, 0, Math.PI*2);
-                            sc.fillStyle=`rgba(255,255,255,${a.stars*tw})`; sc.fill();
-                        });
-                    }
+function jd(d){ return d.getTime()/86400000+2440587.5; }
+function lst(date){ const j=jd(date),T=(j-2451545)/36525; return ((280.46061837+360.98564736629*(j-2451545)+T*T*.000387933+LON)%360+360)%360; }
+function raDecToAltAz(ra,dec,date){
+  const ha=((lst(date)-ra*15)+360)%360*Math.PI/180, dr=dec*Math.PI/180;
+  const sa=Math.sin(dr)*Math.sin(LAT_R)+Math.cos(dr)*Math.cos(LAT_R)*Math.cos(ha);
+  const alt=Math.asin(Math.max(-1,Math.min(1,sa)))*180/Math.PI;
+  const ca=(Math.sin(dr)-Math.sin(alt*Math.PI/180)*Math.sin(LAT_R))/(Math.cos(alt*Math.PI/180)*Math.cos(LAT_R));
+  let az=Math.acos(Math.max(-1,Math.min(1,ca)))*180/Math.PI;
+  if(Math.sin(ha)>0) az=360-az;
+  return {alt,az};
+}
+function project(alt,az){
+  if(alt<-2) return null;
+  const skyB=H*SKY_F;
+  return {x:W/2+((((az-180+180)%360)-180)/100)*(W/2), y:skyB-(Math.max(0,alt)/90)*skyB*.92};
+}
 
-                    // Draw Aurora
-                    if(a.aurora > 0.02) {
-                        AURORA_BANDS.forEach(b=>{
-                            const cy=H*b.y; sc.beginPath(); sc.moveTo(0,cy);
-                            for(let x=0;x<=W;x+=10){
-                                const w=Math.sin(b.freq*x+b.phase+tRef.current*b.speed)*b.amp;
-                                sc.lineTo(x,cy+w);
-                            }
-                            sc.strokeStyle=`rgba(${b.color[0]},${b.color[1]},${b.color[2]},${0.15*a.aurora})`;
-                            sc.lineWidth=b.w; sc.stroke();
-                        });
-                    }
+const STARS=[
+  {n:'Dubhe',ra:11.0621,dec:61.751,mag:1.8},{n:'Merak',ra:11.0307,dec:56.383,mag:2.4},
+  {n:'Phecda',ra:11.8976,dec:53.695,mag:2.4},{n:'Megrez',ra:12.2574,dec:57.033,mag:3.3},
+  {n:'Alioth',ra:12.9004,dec:55.960,mag:1.8},{n:'Mizar',ra:13.3988,dec:54.926,mag:2.1},
+  {n:'Alkaid',ra:13.7923,dec:49.314,mag:1.9},{n:'Polaris',ra:2.5302,dec:89.264,mag:2.0},
+  {n:'Vega',ra:18.6157,dec:38.783,mag:0.0},{n:'Deneb',ra:20.6905,dec:45.280,mag:1.3},
+  {n:'Capella',ra:5.2778,dec:45.998,mag:0.1},{n:'Arcturus',ra:14.2612,dec:19.182,mag:-0.1},
+];
+let spos={};
+function updatePos(){ const now=new Date(); STARS.forEach(s=>{ spos[s.n]={...raDecToAltAz(s.ra,s.dec,now),mag:s.mag}; }); }
+updatePos(); setInterval(updatePos,15000);
 
-                    // Draw Sun
-                    const sunType = SKY_STATES[stateRef.current].sun;
-                    if(sunType) {
-                        let sx,sy,sr,gr2,sc2;
-                        if(sunType==='rising'){sx=W*.2;sy=H*.65;sr=25;gr2=120;sc2='rgba(255,200,100,1)';}
-                        else if(sunType==='high'){sx=W*.8;sy=H*.2;sr=20;gr2=80;sc2='rgba(255,255,240,1)';}
-                        else {sx=W*.15;sy=H*.7;sr=30;gr2=150;sc2='rgba(255,100,50,1)';}
-                        const glow=sc.createRadialGradient(sx,sy,0,sx,sy,gr2);
-                        glow.addColorStop(0,sc2.replace('1)','0.4)')); glow.addColorStop(1,'rgba(0,0,0,0)');
-                        sc.fillStyle=glow; sc.fillRect(sx-gr2,sy-gr2,gr2*2,gr2*2);
-                        sc.beginPath(); sc.arc(sx,sy,sr,0,Math.PI*2); sc.fillStyle=sc2; sc.fill();
-                    }
+const bgStars=Array.from({length:260},()=>({
+  x:Math.random(), y:Math.random()*.9,
+  r:Math.random()*.9+.2, a:Math.random()*.55+.2,
+  ts:Math.random()*.002+.0005, tp:Math.random()*Math.PI*2
+}));
 
-                    // Draw Planet
-                    sc.fillStyle='#000';
-                    sc.beginPath();
-                    sc.moveTo(0,H);
-                    sc.bezierCurveTo(W*0.1, H*0.65, W*0.9, H*0.65, W, H);
-                    sc.lineTo(W,H); sc.closePath(); sc.fill();
-                    const rim=sc.createLinearGradient(0,H*0.6,0,H*0.8);
-                    rim.addColorStop(0,s.rim); rim.addColorStop(1,'rgba(0,0,0,0)');
-                    sc.strokeStyle=rim; sc.lineWidth=4; sc.stroke();
+function getSky(){ const h=new Date().getHours()+new Date().getMinutes()/60; if(h>=22||h<4)return['#000005','#000310','#010818']; if(h<6)return['#000008','#05020e','#1a0820']; return['#000015','#040818','#080f20']; }
 
-                    tRef.current+=16;
-                    animRef.current=requestAnimationFrame(frame);
-                }
-                animRef.current=requestAnimationFrame(frame);
-                return()=>{cancelAnimationFrame(animRef.current); window.removeEventListener('resize',resize);};
-            },[]);
+const aWaves=[
+  {y:.03,amp:35,freq:.0018,spd:.00018,color:[0,255,160],w:100,ph:0},
+  {y:.01,amp:48,freq:.0014,spd:.00025,color:[100,50,255],w:130,ph:2.2},
+  {y:.06,amp:28,freq:.0016,spd:.0002,color:[0,200,255],w:80,ph:4.8},
+];
+function auroraA(){ const h=new Date().getHours(); return h>=21||h<6?.5:h<8||h>=19?.18:0; }
 
-            return <canvas ref={skyRef} style={{display:'block'}}/>;
-        }
+const comets=[];
+function spawnComet(){ comets.push({x:Math.random()*W,y:Math.random()*H*.4,vx:(Math.random()*3+2)*(Math.random()<.5?1:-1),vy:Math.random()*1.2+.4,len:Math.random()*140+80,alpha:1,r:Math.random()*.7+.3}); }
+spawnComet(); setInterval(()=>Math.random()<.4&&spawnComet(),7000);
 
-        const App = () => {
-            const skyState = getAutoState();
-            const skyInfo = SKY_STATES[skyState];
+// ── UFO (positioned over the illustration's road/van area) ──
+// The scene image sits centered, bottom-aligned
+// Van is roughly at 48% x, 72% y of the image
+function getSceneBounds(){
+  const size = Math.min(W, H);
+  const x0 = (W - size) / 2;
+  const y0 = H - size;
+  return {x0, y0, size};
+}
+function scenePoint(px, py){
+  // px,py are 0..1 fractions of the illustration
+  const {x0,y0,size} = getSceneBounds();
+  return {x: x0 + px*size, y: y0 + py*size};
+}
 
-            return (
-                <div style={{position:'relative', width:'100%', height:'100%', overflow:'hidden', fontFamily:'sans-serif'}}>
-                    <SpaceCanvas skyState={skyState}/>
-                    <div style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', justifyContent:'space-between', padding:'40px', pointerEvents:'none', color:'white'}}>
-                        <div style={{display:'flex', justifyContent:'space-between', opacity:0.6, fontSize:'12px', letterSpacing:'0.1em'}}>
-                            <span>LOCATION: LOW EARTH ORBIT</span>
-                            <span>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})}</span>
-                        </div>
-                        <div>
-                            <h1 style={{fontSize:'48px', fontWeight:'200', margin:'0 0 10px 0', letterSpacing:'0.1em'}}>CHEZ PREFECT</h1>
-                            <p style={{fontSize:'14px', opacity:0.5, margin:'0 0 30px 0', letterSpacing:'0.05em'}}>ESTABLISHING MULTIPLANETARY PRESENCE</p>
-                            <div style={{display:'flex', gap:'20px', pointerEvents:'all'}}>
-                                <button style={{background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', color:'white', padding:'12px 24px', cursor:'pointer'}}>ENTER HUB</button>
-                                <a href="mailto:hello@chezprefect.com" style={{color:'rgba(255,255,255,0.5)', textDecoration:'none', alignSelf:'center', fontSize:'13px'}}>CONTACT</a>
-                            </div>
-                        </div>
-                        <div style={{fontSize:'10px', opacity:0.3}}>&copy; 2026 CHEZ PREFECT</div>
-                    </div>
-                </div>
-            );
-        };
+const ufo={x:-120,y:0,speed:0.6,size:16,phase:'flying',stopX:0,stopY:0,beamLen:0,beamMax:0,signAlpha:0,signTimer:0,figY:0,figAlpha:1,waitTimer:0};
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+function resetUFO(){
+  const vp = scenePoint(0.48, 0.20); // fly in high
+  ufo.x=-120; ufo.y=vp.y; ufo.speed=0.6;
+  ufo.phase='flying';
+  const stop = scenePoint(0.50, 0.20);
+  ufo.stopX=stop.x;
+  const vanPos = scenePoint(0.48, 0.70);
+  ufo.stopY=stop.y;
+  ufo.beamMax=vanPos.y - stop.y - 8;
+  ufo.beamLen=0; ufo.signAlpha=0; ufo.signTimer=0;
+  ufo.figY=vanPos.y; ufo.figAlpha=1; ufo.waitTimer=0;
+}
+resetUFO();
+
+function updateUFO(){
+  const u=ufo;
+  if(u.phase==='flying'){
+    u.x+=u.speed; u.speed=Math.min(u.speed*1.01,1.4);
+    if(u.x>=u.stopX) u.phase='stopping';
+  } else if(u.phase==='stopping'){
+    u.speed*=0.87; u.x+=u.speed;
+    if(u.speed<0.05) u.phase='beaming';
+  } else if(u.phase==='beaming'){
+    u.beamLen=Math.min(u.beamLen+3,u.beamMax);
+    if(u.beamLen>=u.beamMax){ u.signAlpha=Math.min(u.signAlpha+0.018,1); if(u.signAlpha>=1){u.phase='sign';u.signTimer=0;} }
+  } else if(u.phase==='sign'){
+    u.signTimer++;
+    if(u.signTimer>200) u.phase='abducting';
+  } else if(u.phase==='abducting'){
+    u.signAlpha=Math.max(u.signAlpha-0.02,0);
+    u.figY-=2.2;
+    if(u.figY<=u.y+u.size){ u.figAlpha=Math.max(u.figAlpha-0.08,0); if(u.figAlpha<=0) u.phase='retracting'; }
+  } else if(u.phase==='retracting'){
+    u.beamLen=Math.max(u.beamLen-5,0);
+    if(u.beamLen<=0){u.phase='departing'; u.speed=0.7;}
+  } else if(u.phase==='departing'){
+    u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed;
+    if(u.x>W+150){ setTimeout(resetUFO, 4000); ufo.phase='done'; }
+  }
+}
+
+function drawUFO(){
+  const u=ufo, x=u.x, y=u.y, s=u.size;
+  if(u.phase==='done') return;
+  const c=ufoCtx;
+
+  // Beam
+  if(u.beamLen>0){
+    const bw=s*1.8;
+    const beam=c.createLinearGradient(x,y+s*.3,x,y+u.beamLen);
+    beam.addColorStop(0,'rgba(0,255,200,0.28)'); beam.addColorStop(.7,'rgba(0,255,200,0.09)'); beam.addColorStop(1,'rgba(0,255,200,0)');
+    c.beginPath(); c.moveTo(x-bw*.4,y+s*.3); c.lineTo(x+bw*.4,y+s*.3); c.lineTo(x+bw,y+u.beamLen); c.lineTo(x-bw,y+u.beamLen); c.closePath();
+    c.fillStyle=beam; c.fill();
+  }
+
+  // Stick figure
+  if(u.phase==='sign'||u.phase==='abducting'){
+    const fx=x, fy=u.figY, fs=9;
+    c.save(); c.globalAlpha=u.figAlpha;
+    c.strokeStyle='#fff'; c.lineWidth=1.6; c.lineCap='round';
+    c.beginPath(); c.arc(fx,fy-fs*2.2,fs*.5,0,Math.PI*2); c.stroke();
+    c.beginPath(); c.moveTo(fx,fy-fs*1.7); c.lineTo(fx,fy-fs*.7); c.stroke();
+    c.beginPath(); c.moveTo(fx,fy-fs*1.4); c.lineTo(fx-fs*.7,fy-fs*2.0); c.stroke();
+    c.beginPath(); c.moveTo(fx,fy-fs*1.4); c.lineTo(fx+fs*.7,fy-fs*2.0); c.stroke();
+    c.beginPath(); c.moveTo(fx,fy-fs*.7); c.lineTo(fx-fs*.4,fy); c.stroke();
+    c.beginPath(); c.moveTo(fx,fy-fs*.7); c.lineTo(fx+fs*.4,fy); c.stroke();
+    c.restore();
+  }
+
+  // Sign
+  if(u.signAlpha>0){
+    const sx=x, sy=u.figY-55, sw=175, sh=38;
+    c.save(); c.globalAlpha=u.signAlpha;
+    const sg=c.createRadialGradient(sx,sy,0,sx,sy,sw*.7);
+    sg.addColorStop(0,'rgba(0,255,200,0.13)'); sg.addColorStop(1,'rgba(0,255,200,0)');
+    c.fillStyle=sg; c.fillRect(sx-sw,sy-sh*2,sw*2,sh*3);
+    c.fillStyle='rgba(0,10,8,0.88)'; c.strokeStyle='rgba(0,255,180,0.6)'; c.lineWidth=1;
+    c.beginPath(); c.rect(sx-sw/2,sy-sh/2,sw,sh); c.fill(); c.stroke();
+    c.fillStyle='rgba(0,255,190,0.96)'; c.font='bold 13px "Courier New",monospace';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText('COMING SOON', sx, sy);
+    c.restore();
+  }
+
+  // Glow
+  const g=c.createRadialGradient(x,y,0,x,y,s*4);
+  g.addColorStop(0,'rgba(0,255,200,0.15)'); g.addColorStop(1,'rgba(0,255,200,0)');
+  c.fillStyle=g; c.beginPath(); c.arc(x,y,s*4,0,Math.PI*2); c.fill();
+  // Body
+  c.beginPath(); c.ellipse(x,y+2,s,s*.35,0,0,Math.PI*2); c.fillStyle='#080808'; c.fill();
+  c.strokeStyle='rgba(0,220,180,0.6)'; c.lineWidth=.9; c.stroke();
+  // Dome
+  c.beginPath(); c.ellipse(x,y,s*.45,s*.28,0,Math.PI,Math.PI*2); c.fillStyle='#0d0d0d'; c.fill();
+  c.strokeStyle='rgba(0,220,180,0.35)'; c.lineWidth=.8; c.stroke();
+  // Strip
+  const strip=c.createLinearGradient(x-s*.6,y+4,x+s*.6,y+4);
+  strip.addColorStop(0,'rgba(0,255,200,0)'); strip.addColorStop(.5,'rgba(0,255,200,0.4)'); strip.addColorStop(1,'rgba(0,255,200,0)');
+  c.strokeStyle=strip; c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(x-s*.6,y+4); c.lineTo(x+s*.6,y+4); c.stroke();
+}
+
+let t=0;
+function frame(){
+  skyCtx.clearRect(0,0,W,H);
+  ufoCtx.clearRect(0,0,W,H);
+
+  // Sky gradient
+  const [top,mid,hor]=getSky();
+  const g=skyCtx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,top); g.addColorStop(.4,mid); g.addColorStop(.7,hor); g.addColorStop(1,'#000');
+  skyCtx.fillStyle=g; skyCtx.fillRect(0,0,W,H);
+
+  // Bg stars (upper sky only)
+  bgStars.forEach(s=>{
+    const tw=.5+.5*Math.sin(t*s.ts+s.tp);
+    skyCtx.beginPath(); skyCtx.arc(s.x*W,s.y*H*SKY_F,s.r,0,Math.PI*2);
+    skyCtx.fillStyle=`rgba(255,255,255,${s.a*tw})`; skyCtx.fill();
+  });
+
+  // Aurora
+  const aStr=auroraA();
+  if(aStr>0) aWaves.forEach(b=>{
+    skyCtx.beginPath(); skyCtx.moveTo(0,H*b.y);
+    for(let x=0;x<=W;x+=8) skyCtx.lineTo(x,H*b.y+Math.sin(b.freq*x+b.ph+t*b.spd)*b.amp);
+    skyCtx.strokeStyle=`rgba(${b.color[0]},${b.color[1]},${b.color[2]},${.18*aStr})`;
+    skyCtx.lineWidth=b.w; skyCtx.stroke();
+  });
+
+  // Named stars
+  STARS.forEach((s,i)=>{
+    const p=spos[s.n]; if(!p) return;
+    const c=project(p.alt,p.az); if(!c) return;
+    const tw=.6+.4*Math.sin(t*.0006+i*.7);
+    const r=1.0+Math.max(0,(2.5-s.mag)/2.2);
+    skyCtx.beginPath(); skyCtx.arc(c.x,c.y,r,0,Math.PI*2);
+    skyCtx.fillStyle=`rgba(210,225,255,${tw*.95})`; skyCtx.fill();
+  });
+
+  // Comets
+  for(let i=comets.length-1;i>=0;i--){
+    const c=comets[i];
+    const tx=c.x-(c.vx/Math.abs(c.vx))*c.len,ty=c.y-c.vy*(c.len/Math.abs(c.vx));
+    const cg=skyCtx.createLinearGradient(c.x,c.y,tx,ty);
+    cg.addColorStop(0,`rgba(255,255,255,${c.alpha*.9})`); cg.addColorStop(1,'rgba(255,255,255,0)');
+    skyCtx.beginPath(); skyCtx.moveTo(c.x,c.y); skyCtx.lineTo(tx,ty);
+    skyCtx.strokeStyle=cg; skyCtx.lineWidth=c.r; skyCtx.stroke();
+    c.x+=c.vx; c.y+=c.vy; c.alpha-=.003;
+    if(c.alpha<=0||c.y>H*SKY_F) comets.splice(i,1);
+  }
+
+  // UFO
+  updateUFO();
+  drawUFO();
+
+  t+=16; requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
 </body>
 </html>
