@@ -1,123 +1,191 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chez Prefect | Juneau Transit</title>
-    <style>
-        body { margin: 0; background: #0b141a; overflow: hidden; font-family: 'Courier New', monospace; }
-        #stage { width: 100vw; height: 100vh; position: relative; display: flex; align-items: center; justify-content: center; }
-        
-        /* The circular portal matching your image */
-        #portal {
-            width: 90vh; height: 90vh;
-            max-width: 95vw; max-height: 95vw;
-            border-radius: 50%;
-            background: #1a2a3a; /* Night sky color from image */
-            position: relative;
-            overflow: hidden;
-            border: 8px solid #080f08;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
-        }
-
-        /* UI Overlays */
-        #ui { position: absolute; inset: 0; padding: 2rem; pointer-events: none; color: white; z-index: 100; text-transform: uppercase; }
-        .top-bar { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.4; letter-spacing: 2px; }
-        .bottom-bar { position: absolute; bottom: 2rem; left: 2rem; right: 2rem; display: flex; justify-content: space-between; font-size: 10px; opacity: 0.4; }
-
-        /* SVG Layers */
-        svg { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; }
-        
-        /* Animation for the UFO sign */
-        @keyframes beamFade {
-            0%, 100% { opacity: 0.3; }
-            50% { opacity: 1; }
-        }
-        .coming-soon { font-weight: bold; fill: #00ffb8; filter: drop-shadow(0 0 5px #00ffb8); animation: beamFade 2s infinite; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chez Prefect</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; overflow:hidden; width:100vw; height:100vh; font-family:'Courier New',monospace; }
+  canvas { display:block; position:absolute; inset:0; }
+  #ui { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:space-between; padding:1.8rem 2.2rem; pointer-events:none; color:white; }
+  #top { display:flex; justify-content:space-between; font-size:.6rem; letter-spacing:.2em; opacity:.4; }
+  #bottom { display:flex; justify-content:space-between; font-size:.55rem; letter-spacing:.16em; opacity:.3; }
+  #aurora-dot { display:inline-block; width:5px; height:5px; border-radius:50%; background:#00ffb8; box-shadow:0 0 6px #00ffb8; margin-right:.45rem; animation:blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+</style>
 </head>
 <body>
-
-<div id="stage">
-    <div id="portal">
-        <svg viewBox="0 0 500 500" preserveAspectRatio="xMidYMid slice">
-            <g fill="white" opacity="0.8">
-                <circle cx="200" cy="80" r="1.5" />
-                <circle cx="230" cy="90" r="1.5" />
-                <circle cx="250" cy="100" r="1.5" />
-                <circle cx="270" cy="115" r="2" />
-                <circle cx="310" cy="110" r="2" />
-                <circle cx="320" cy="140" r="2" />
-                <circle cx="280" cy="145" r="2" />
-            </g>
-
-            <path d="M-50 300 L50 180 L150 280 L250 120 L380 280 L450 160 L550 300 Z" fill="#6b8ca6" /> <path d="M50 180 L20 220 L80 220 Z M250 120 L210 170 L290 170 Z M450 160 L420 200 L480 200 Z" fill="white" opacity="0.9" /> <rect x="0" y="280" width="500" height="220" fill="#4d7d4d" />
-
-            <path d="M250 280 Q250 350 150 380 T250 500" fill="none" stroke="#2a2e2a" stroke-width="60" />
-            <path d="M250 280 Q250 350 150 380 T250 500" fill="none" stroke="#3d423d" stroke-width="50" />
-            <path d="M250 280 Q250 350 150 380 T250 500" fill="none" stroke="#f0c040" stroke-width="1" stroke-dasharray="10,10" opacity="0.3" />
-
-            <g id="forest"></g>
-
-            <g transform="translate(260, 420) scale(0.6)">
-                <rect x="0" y="0" width="60" height="35" rx="10" fill="#a0d8ef" />
-                <rect x="0" y="0" width="60" height="15" rx="5" fill="white" />
-                <rect x="10" y="5" width="10" height="8" fill="#333" />
-                <rect x="25" y="5" width="10" height="8" fill="#333" />
-                <rect x="40" y="5" width="10" height="8" fill="#333" />
-            </g>
-
-            <g id="ufo-group" style="cursor: pointer;">
-                <ellipse cx="250" cy="50" rx="20" ry="6" fill="#111" stroke="#00ffb8" />
-                <path d="M250 56 L200 280 L300 280 Z" fill="url(#beamGradient)" opacity="0.3" />
-                <text x="250" y="260" text-anchor="middle" class="coming-soon" font-size="18">COMING SOON</text>
-            </g>
-
-            <defs>
-                <linearGradient id="beamGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#00ffb8" />
-                    <stop offset="100%" stop-color="#00ffb8" stop-opacity="0" />
-                </linearGradient>
-            </defs>
-        </svg>
-    </div>
-
-    <div id="ui">
-        <div class="top-bar">
-            <span>58.3005° N 134.4197° W</span>
-            <span id="clock">00:00:00 AKDT</span>
-        </div>
-        <div class="bottom-bar">
-            <span>Aurora Monitor Active</span>
-            <span>Juneau, Alaska</span>
-        </div>
-    </div>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="top"><span>58.3005° N  134.4197° W</span><span id="clock"></span></div>
+  <div id="bottom"><span><span id="aurora-dot"></span>AURORA MONITOR ACTIVE</span><span>JUNEAU · ALASKA</span></div>
 </div>
-
 <script>
-    // Populate the forest with varying tree sizes
-    const forest = document.getElementById('forest');
-    for(let i=0; i<100; i++) {
-        const x = Math.random() * 500;
-        const y = 280 + Math.random() * 220;
-        // Don't draw trees on the road
-        if (x > 180 && x < 320 && y > 300) continue; 
-        
-        const size = 10 + (y - 280) * 0.2;
-        const tree = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        tree.setAttribute("d", `M${x} ${y} L${x-size/2} ${y+size} L${x+size/2} ${y+size} Z`);
-        tree.setAttribute("fill", "#1b331b");
-        forest.appendChild(tree);
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+let W,H;
+function resize(){ W=cv.width=window.innerWidth; H=cv.height=window.innerHeight; }
+resize(); window.addEventListener('resize',resize);
+
+function updateClock(){ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' AKDT'; }
+setInterval(updateClock,1000); updateClock();
+
+// --- ASTRONOMY ENGINE (KEEPING YOUR ACCURATE STARS) ---
+const LAT_R=58.3005*Math.PI/180, LON=-134.4197, SKY_F=0.55;
+function jd(d){ return d.getTime()/86400000+2440587.5; }
+function lst(date){ const j=jd(date),T=(j-2451545)/36525; return((280.46061837+360.98564736629*(j-2451545)+T*T*.000387933+LON)%360+360)%360; }
+function raDecToAltAz(ra,dec,date){
+  const ha=((lst(date)-ra*15)+360)%360*Math.PI/180,dr=dec*Math.PI/180;
+  const sa=Math.sin(dr)*Math.sin(LAT_R)+Math.cos(dr)*Math.cos(LAT_R)*Math.cos(ha);
+  const alt=Math.asin(Math.max(-1,Math.min(1,sa)))*180/Math.PI;
+  const ca=(Math.sin(dr)-Math.sin(alt*Math.PI/180)*Math.sin(LAT_R))/(Math.cos(alt*Math.PI/180)*Math.cos(LAT_R));
+  let az=Math.acos(Math.max(-1,Math.min(1,ca)))*180/Math.PI;
+  if(Math.sin(ha)>0) az=360-az;
+  return{alt,az};
+}
+function project(alt,az){
+  if(alt<-2)return null;
+  const skyB=H*SKY_F;
+  return{x:W/2+((((az-180+180)%360)-180)/100)*(W/2),y:skyB-(Math.max(0,alt)/90)*skyB*.92};
+}
+const STARS=[
+  {n:'Dubhe',ra:11.0621,dec:61.751,mag:1.8},{n:'Merak',ra:11.0307,dec:56.383,mag:2.4},
+  {n:'Phecda',ra:11.8976,dec:53.695,mag:2.4},{n:'Megrez',ra:12.2574,dec:57.033,mag:3.3},
+  {n:'Alioth',ra:12.9004,dec:55.960,mag:1.8},{n:'Mizar',ra:13.3988,dec:54.926,mag:2.1},
+  {n:'Alkaid',ra:13.7923,dec:49.314,mag:1.9},{n:'Polaris',ra:2.5302,dec:89.264,mag:2.0}
+];
+let spos={};
+function updatePos(){ const now=new Date(); STARS.forEach(s=>{spos[s.n]={...raDecToAltAz(s.ra,s.dec,now),mag:s.mag};}); }
+updatePos(); setInterval(updatePos,15000);
+
+const bgStars=Array.from({length:200},()=>({x:Math.random(),y:Math.random(),r:Math.random()*.8+.2,a:Math.random()*.4,ts:Math.random()*.002,tp:Math.random()*Math.PI*2}));
+
+// --- AURORA & COMETS ---
+const aWaves=[{y:.05,amp:30,freq:.002,spd:.0002,color:[0,255,160],w:120,ph:0},{y:.08,amp:40,freq:.0015,spd:.0003,color:[120,60,255],w:150,ph:3}];
+const comets=[];
+function spawnComet(){ comets.push({x:Math.random()*W,y:Math.random()*H*.3,vx:(Math.random()*4+2)*(Math.random()<.5?1:-1),vy:Math.random()*1.5,len:Math.random()*100+50,alpha:1,r:Math.random()}); }
+setInterval(()=>Math.random()<.3&&spawnComet(),8000);
+
+// --- NEW SCENE RENDERING (MATCHING YOUR IMAGE) ---
+function drawMountain(x, y, width, height, color, snow = false) {
+    ctx.beginPath();
+    ctx.moveTo(x - width/2, y);
+    ctx.lineTo(x, y - height);
+    ctx.lineTo(x + width/2, y);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if(snow) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - height);
+        ctx.lineTo(x - width/8, y - height*0.75);
+        ctx.lineTo(x + width/8, y - height*0.75);
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.fill();
+    }
+}
+
+function drawTree(x, y, scale) {
+    const h = 40 * scale;
+    const w = 15 * scale;
+    ctx.fillStyle = "#142d16";
+    // Three tiers of branches
+    for(let i=0; i<3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - h + (i*h*0.25));
+        ctx.lineTo(x - w*(1+i*0.2), y - h + (i+1.2)*h*0.35);
+        ctx.lineTo(x + w*(1+i*0.2), y - h + (i+1.2)*h*0.35);
+        ctx.fill();
+    }
+}
+
+function drawLandscape() {
+    const gy = H * SKY_F;
+    
+    // 1. Far Ground
+    ctx.fillStyle = "#1e3d20";
+    ctx.fillRect(0, gy, W, H - gy);
+
+    // 2. Mountains (Matching the 3 peaks in your image)
+    drawMountain(W*0.25, gy+10, W*0.5, H*0.25, "#3a506b", true);
+    drawMountain(W*0.5, gy+10, W*0.6, H*0.35, "#2c3e50", true);
+    drawMountain(W*0.75, gy+10, W*0.5, H*0.25, "#3a506b", true);
+
+    // 3. Winding Road (The S-Curve)
+    ctx.beginPath();
+    ctx.moveTo(W*0.48, gy); // Horizon start
+    ctx.bezierCurveTo(W*0.48, gy + H*0.1, W*0.3, gy + H*0.15, W*0.5, gy + H*0.25);
+    ctx.bezierCurveTo(W*0.7, gy + H*0.35, W*0.3, H*0.9, W*0.6, H);
+    
+    ctx.shadowBlur = 15; ctx.shadowColor = "black";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = W * 0.12; ctx.stroke(); // Asphalt
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = W * 0.10; ctx.stroke(); // Inner road
+    ctx.shadowBlur = 0;
+
+    // 4. Forest (Random but structured)
+    for(let i=0; i<60; i++) {
+        const tx = (i * 137.5) % W;
+        const ty = gy + (i * 23) % (H - gy);
+        // Avoid the road path roughly
+        if (Math.abs(tx - W*0.5) > W*0.1) {
+            drawTree(tx, ty, 0.5 + (ty-gy)/(H-gy));
+        }
     }
 
-    // Clock update
-    function updateClock() {
-        const now = new Date();
-        document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', { hour12: false }) + " AKDT";
-    }
-    setInterval(updateClock, 1000);
-    updateClock();
+    // 5. The Bus (VW Style from image)
+    const bx = W*0.52, by = H*0.82;
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(0.1);
+    ctx.fillStyle = "#aed9e0"; // Light Blue
+    ctx.roundRect(-25, -15, 50, 30, 8); ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.roundRect(-25, -15, 50, 12, 5); ctx.fill();
+    ctx.fillStyle = "#333"; // Windows
+    ctx.fillRect(-18, -10, 8, 6); ctx.fillRect(-2, -10, 8, 6); ctx.fillRect(14, -10, 8, 6);
+    ctx.restore();
+}
+
+let t=0;
+function frame(){
+  ctx.clearRect(0,0,W,H);
+  
+  // Sky Gradient
+  const h=new Date().getHours();
+  const skyG=ctx.createLinearGradient(0,0,0,H*SKY_F);
+  skyG.addColorStop(0,"#000005"); skyG.addColorStop(1,"#051020");
+  ctx.fillStyle=skyG; ctx.fillRect(0,0,W,H);
+
+  // Aurora
+  aWaves.forEach(b=>{
+    ctx.beginPath(); ctx.moveTo(0,H*b.y);
+    for(let x=0;x<=W;x+=10) ctx.lineTo(x,H*b.y+Math.sin(b.freq*x+b.ph+t*b.spd)*b.amp);
+    ctx.strokeStyle=`rgba(${b.color[0]},${b.color[1]},${b.color[2]},0.15)`;
+    ctx.lineWidth=b.w; ctx.stroke();
+  });
+
+  // Accurate Stars
+  STARS.forEach((s,i)=>{
+    const p=spos[s.n]; if(!p) return;
+    const c=project(p.alt,p.az); if(!c) return;
+    const tw=.7+.3*Math.sin(t*.001+i);
+    ctx.beginPath(); ctx.arc(c.x,c.y,1.5,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${tw})`; ctx.fill();
+  });
+
+  // Comets
+  for(let i=comets.length-1;i>=0;i--){
+    const c=comets[i];
+    ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(c.x-c.len*(c.vx/5),c.y-c.len*(c.vy/5));
+    ctx.strokeStyle=`rgba(255,255,255,${c.alpha})`; ctx.stroke();
+    c.x+=c.vx; c.y+=c.vy; c.alpha-=.005; if(c.alpha<=0) comets.splice(i,1);
+  }
+
+  drawLandscape();
+  t+=16; requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 </script>
-
 </body>
 </html>
