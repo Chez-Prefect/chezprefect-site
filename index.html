@@ -97,7 +97,7 @@ let sunTimes=calcSunTimes(new Date());
 setInterval(()=>sunTimes=calcSunTimes(new Date()),60000);
 
 function getHourF(){ const n=new Date(); return n.getHours()+n.getMinutes()/60+n.getSeconds()/3600; }
-function isDay(){ const h=getHourF(); return h>=sunTimes.rise&&h<sunTimes.set; }
+function isDay(){ const h=getHourF(); return h>=sunTimes.firstLight&&h<sunTimes.lastLight; }
 function isDusk(){ const h=getHourF(); return h>=sunTimes.set&&h<sunTimes.lastLight; }
 function isDawn(){ const h=getHourF(); return h>=sunTimes.firstLight&&h<sunTimes.rise; }
 
@@ -247,7 +247,7 @@ function drawBillboard(lit){
   ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.rect(x-BW/2,y-BH,BW,BH); ctx.fill(); ctx.stroke();
   const h=getHourF();
-  const showDay=h>=sunTimes.rise&&h<sunTimes.set;
+  const showDay=h>=sunTimes.firstLight&&h<sunTimes.lastLight;
   if(showDay){
     ctx.fillStyle='rgba(220,200,130,0.95)';
     ctx.font="bold 17px 'Courier New',monospace";
