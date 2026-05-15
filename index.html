@@ -164,10 +164,10 @@ function updateUFO(){
     u.holdTimer++;
     if(u.holdTimer>220) u.phase='retracting';
   } else if(u.phase==='retracting'){
-    u.beamLen=Math.max(u.beamLen-5,0);
-    u.beamAlpha=Math.max(u.beamAlpha-0.02,0);
     u.litAlpha=Math.max(u.litAlpha-0.02,0);
-    if(u.beamLen<=0){ u.phase='departing'; u.speed=0.8; }
+    u.beamLen=Math.max(u.beamLen-5,0);
+    u.beamAlpha=u.beamLen>0?Math.min(u.beamAlpha,u.beamLen/50):0;
+    if(u.beamLen<=0){ u.beamAlpha=0; u.litAlpha=0; u.phase='departing'; u.speed=0.8; }
   } else if(u.phase==='departing'){
     u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed; u.y-=u.speed*.1;
     if(u.x>W+160) u.phase='waiting';
