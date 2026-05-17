@@ -49,7 +49,9 @@ const SKY_STATES={
   golden:      {skyStops:[[0,'#1a2050'],[0.3,'#6a3aaa'],[0.55,'#d4602a'],[0.75,'#f0962a'],[1,'#fcd060']],stars:false,aurora:false,sun:'setting',clouds:0.2,rain:0,fog:0,mountainRim:'rgba(255,140,30,0.55)'},
   late_evening:{skyStops:[[0,'#050820'],[0.4,'#0f1840'],[0.65,'#1a2848'],[1,'#0a1830']],stars:true,aurora:true,sun:false,clouds:0,rain:0,fog:0,mountainRim:'rgba(0,200,160,0.22)'},
   overcast:    {skyStops:[[0,'#2a2e35'],[0.4,'#3a4048'],[0.7,'#4a5058'],[1,'#5a6068']],stars:false,aurora:false,sun:false,clouds:0.9,rain:0,fog:0,mountainRim:'rgba(180,190,200,0.12)'},
+  overcast_day:{skyStops:[[0,'#7a8090'],[0.4,'#8a90a0'],[0.7,'#9aa0b0'],[1,'#aab0c0']],stars:false,aurora:false,sun:false,clouds:0.9,rain:0,fog:0,mountainRim:'rgba(180,190,200,0.2)'},
   rain:        {skyStops:[[0,'#1a1e24'],[0.4,'#252a32'],[0.7,'#303540'],[1,'#3a404a']],stars:false,aurora:false,sun:false,clouds:1,rain:0.6,fog:0.2,mountainRim:'rgba(120,140,160,0.08)'},
+  rain_day:    {skyStops:[[0,'#4a5060'],[0.4,'#555d6a'],[0.7,'#606870'],[1,'#6a7278']],stars:false,aurora:false,sun:false,clouds:1,rain:0.6,fog:0.1,mountainRim:'rgba(140,160,180,0.15)'},
   heavy_rain:  {skyStops:[[0,'#111418'],[0.4,'#181c22'],[0.7,'#20252e'],[1,'#282e38']],stars:false,aurora:false,sun:false,clouds:1,rain:1,fog:0.4,mountainRim:'rgba(80,100,120,0.06)'},
   fog:         {skyStops:[[0,'#2a2e32'],[0.4,'#3c4248'],[0.7,'#505860'],[1,'#686e76']],stars:false,aurora:false,sun:false,clouds:0.5,rain:0,fog:0.85,mountainRim:'rgba(180,190,200,0.08)'},
 };
@@ -90,13 +92,13 @@ function getH(){ var n=new Date(); return n.getHours()+n.getMinutes()/60+n.getSe
 function isDay(){ var h=getH(); return h>=sunTimes.firstLight&&h<sunTimes.lastLight; }
 
 function getSkyState(){
-  var h=getH(), wc=weather.wc, cc=weather.cloudCover;
-  if(wc>=61&&wc<=67) return 'heavy_rain';
-  if(wc>=51&&wc<=57) return 'rain';
+  var h=getH(), wc=weather.wc, cc=weather.cloudCover, day=isDay();
+  if(wc>=61&&wc<=67) return day?'rain_day':'heavy_rain';
+  if(wc>=51&&wc<=57) return day?'rain_day':'rain';
   if(wc===45||wc===48) return 'fog';
-  if(wc>=71&&wc<=77) return 'overcast';
-  if(cc>0.8) return 'overcast';
-  if(cc>0.5) return (h>=sunTimes.firstLight&&h<sunTimes.lastLight)?'morning':'midnight';
+  if(wc>=71&&wc<=77) return day?'overcast_day':'overcast';
+  if(cc>0.8) return day?'overcast_day':'overcast';
+  if(cc>0.5) return day?'morning':'midnight';
   if(h<sunTimes.firstLight||h>=sunTimes.lastLight+0.5) return (h>=21||h<5)?'aurora':'midnight';
   if(h<sunTimes.rise) return 'aurora';
   if(h<sunTimes.rise+1.5) return 'sunrise';
@@ -331,7 +333,7 @@ function updateUFO(){
     u.speed=Math.min(u.speed*1.05,5); u.x+=u.speed; u.y-=u.speed*.1;
     if(u.x>W+160) u.phase='waiting';
   } else if(u.phase==='waiting'){
-    u.waitTimer++; if(u.waitTimer>180) initUFO();
+    u.waitTimer++; if(u.waitTimer>180){ u.waitTimer=0; initUFO(); }
   }
 }
 
